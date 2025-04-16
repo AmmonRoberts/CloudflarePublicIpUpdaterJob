@@ -8,6 +8,9 @@ using Refit;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
+builder.Configuration.AddJsonFile("local.settings.json", optional: true, reloadOnChange: false);
+builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
+
 builder.Services.AddHttpClient();
 
 builder.Services.AddRefitClient<ICloudflareClient>()
