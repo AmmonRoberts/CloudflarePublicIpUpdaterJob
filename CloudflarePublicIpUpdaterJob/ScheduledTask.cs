@@ -2,6 +2,7 @@ using CloudflarePublicIpUpdaterJob.Clients;
 using CloudflarePublicIpUpdaterJob.Models.Cloudflare;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
 
 namespace CloudflarePublicIpUpdaterJob;
@@ -9,37 +10,42 @@ namespace CloudflarePublicIpUpdaterJob;
 public class ScheduledTask : BackgroundService
 {
 	private readonly ILogger<ScheduledTask> _logger;
+	private readonly JobSettings _jobSettings;
 	private readonly ICloudflareClient _cloudflareClient;
 	private readonly IPublicIpClient _publicIpClient;
 
 	private int _executionCount;
 
-	public ScheduledTask(ILogger<ScheduledTask> logger, ICloudflareClient cloudflareClient, IPublicIpClient publicIpClient)
+	public ScheduledTask(ILogger<ScheduledTask> logger, IOptions<JobSettings> jobSettings, ICloudflareClient cloudflareClient, IPublicIpClient publicIpClient)
 	{
 		_logger = logger;
+		_jobSettings = jobSettings.Value;
 		_cloudflareClient = cloudflareClient;
 		_publicIpClient = publicIpClient;
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		_logger.LogInformation("Timed Hosted Service running.");
+		_logger.LogDebug("Timed Hosted Service running.");
 
-		// When the timer should have no due-time, then do the work once now.
 		await CheckAndUpdatePublicIp();
 
-		using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
+		using PeriodicTimer timer = new(TimeSpan.FromSeconds(_jobSettings.TimerScheduleSeconds));
 
 		try
 		{
 			while (await timer.WaitForNextTickAsync(stoppingToken))
 			{
+				_logger.LogInformation("Starting timer. Next job execution will be in {Seconds} seconds at {NextSceheduledTime}.", _jobSettings.TimerScheduleSeconds, DateTime.UtcNow.AddSeconds(_jobSettings.TimerScheduleSeconds));
+
 				await CheckAndUpdatePublicIp();
 			}
 		}
-		catch (OperationCanceledException)
+		catch (Exception e)
 		{
-			_logger.LogInformation("Timed Hosted Service is stopping.");
+			_logger.LogError(e, "An error ocurred while attempting to check and/or update public IP address. Timed Hosted Service is stopping.");
+
+			throw;
 		}
 	}
 
@@ -47,8 +53,7 @@ public class ScheduledTask : BackgroundService
 	{
 		int count = Interlocked.Increment(ref _executionCount);
 
-		_logger.LogError("Timed Hosted Service is working. Count: {Count}", count);
-
+		_logger.LogDebug("Scheduled job has run {JobCount} times.", count);
 
 		try
 		{
@@ -62,6 +67,8 @@ public class ScheduledTask : BackgroundService
 			{
 				if (ipRegex.IsMatch(record.Content!) && record.Content != publicIpresponse.YourFuckingIPAddress)
 				{
+					_logger.LogInformation("Found an A DNS record with an IP address value that doesn't match the current public IP address.");
+
 					var patchRequest = new UpdateDnsRecordRequest
 					{
 						Content = publicIpresponse.YourFuckingIPAddress,
@@ -70,7 +77,6 @@ public class ScheduledTask : BackgroundService
 					await _cloudflareClient.UpdateADnsRecordsAsync("68b52b0bd16901afb03de0fda9634419", record.Id!, patchRequest);
 				}
 			}
-
 		}
 		catch (Exception ex)
 		{
