@@ -1,14 +1,20 @@
+using CloudflarePublicIpUpdaterJob;
 using CloudflarePublicIpUpdaterJob.Clients;
 using CloudflarePublicIpUpdaterJob.Configuration;
-using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Refit;
 
-var builder = FunctionsApplication.CreateBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
-builder.Configuration.AddJsonFile("local.settings.json", optional: true, reloadOnChange: false);
+builder.Services.AddLogging(config =>
+{
+	config.AddDebug();
+	config.AddJsonConsole();
+});
+
 builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
 
 builder.Services.AddHttpClient();
@@ -28,7 +34,10 @@ builder.Services.AddRefitClient<IPublicIpClient>()
 		c.BaseAddress = new Uri("https://wtfismyip.com");
 	});
 
-builder.Services.Configure<CloudflareSettings>(builder.Configuration.GetSection("CloudflareSettings"));
+builder.Services.Configure<JobSettings>(builder.Configuration.GetSection(nameof(JobSettings)));
+builder.Services.Configure<CloudflareSettings>(builder.Configuration.GetSection(nameof(CloudflareSettings)));
+
+builder.Services.AddHostedService<ScheduledTask>();
 
 var host = builder.Build();
 
