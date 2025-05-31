@@ -12,7 +12,11 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddLogging(config =>
 {
 	config.AddDebug();
-	config.AddJsonConsole();
+	config.AddJsonConsole(options =>
+	{
+		options.UseUtcTimestamp = true;
+		options.TimestampFormat = "yyyy-MM-dd HH:mm:ss";
+	});
 });
 
 builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
