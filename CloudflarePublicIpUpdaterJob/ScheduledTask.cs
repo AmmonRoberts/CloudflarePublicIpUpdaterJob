@@ -59,19 +59,19 @@ public class ScheduledTask : BackgroundService
 		{
 			var response = await _cloudflareClient.GetADnsRecordsAsync("68b52b0bd16901afb03de0fda9634419");
 
-			var publicIpresponse = await _publicIpClient.GetPublicIpJson();
+			var publicIpResponse = await _publicIpClient.GetPublicIpJson();
 
 			var ipRegex = new Regex(@"^(\d{1,3}\.){3}\d{1,3}$");
 
 			foreach (var record in response.Result)
 			{
-				if (ipRegex.IsMatch(record.Content!) && record.Content != publicIpresponse.YourFuckingIPAddress)
+				if (ipRegex.IsMatch(record.Content!) && record.Content != publicIpResponse.YourFuckingIPAddress)
 				{
 					_logger.LogInformation("Found an A DNS record with an IP address value that doesn't match the current public IP address.");
 
 					var patchRequest = new UpdateDnsRecordRequest
 					{
-						Content = publicIpresponse.YourFuckingIPAddress,
+						Content = publicIpResponse.YourFuckingIPAddress,
 					};
 
 					await _cloudflareClient.UpdateADnsRecordsAsync("68b52b0bd16901afb03de0fda9634419", record.Id!, patchRequest);
