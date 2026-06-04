@@ -1,4 +1,4 @@
-namespace CloudflarePublicIpUpdaterJob;
+namespace CloudflarePublicIpUpdaterJob.Configuration;
 
 public class JobSettings
 {

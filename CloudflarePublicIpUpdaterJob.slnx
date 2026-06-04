@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitignore" />
+    <File Path="Dockerfile" />
+    <File Path="nuget.config" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="CloudflarePublicIpUpdaterJob/CloudflarePublicIpUpdaterJob.csproj" />
+</Solution>

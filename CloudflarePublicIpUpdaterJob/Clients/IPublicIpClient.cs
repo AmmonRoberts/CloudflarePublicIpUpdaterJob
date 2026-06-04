@@ -1,4 +1,4 @@
-﻿using CloudflarePublicIpUpdaterJob.Models;
+using CloudflarePublicIpUpdaterJob.Models;
 using Refit;
 
 namespace CloudflarePublicIpUpdaterJob.Clients;

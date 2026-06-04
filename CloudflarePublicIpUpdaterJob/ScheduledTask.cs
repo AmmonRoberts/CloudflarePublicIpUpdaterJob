@@ -1,4 +1,5 @@
 using CloudflarePublicIpUpdaterJob.Clients;
+using CloudflarePublicIpUpdaterJob.Configuration;
 using CloudflarePublicIpUpdaterJob.Models.Cloudflare;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -43,7 +44,7 @@ public class ScheduledTask : BackgroundService
 		}
 		catch (Exception e)
 		{
-			_logger.LogError(e, "An error ocurred while attempting to check and/or update public IP address. Timed Hosted Service is stopping.");
+			_logger.LogError(e, "An error occurred while attempting to check and/or update public IP address. Timed Hosted Service is stopping.");
 
 			throw;
 		}
