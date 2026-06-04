@@ -16,6 +16,8 @@ public class ScheduledTask : BackgroundService
 	private readonly IPublicIpClient _publicIpClient;
 
 	private int _executionCount;
+	private int _consecutiveFailures;
+	private DateTime? _lastSuccessfulCheck;
 
 	public ScheduledTask(ILogger<ScheduledTask> logger, IOptions<JobSettings> jobSettings, ICloudflareClient cloudflareClient, IPublicIpClient publicIpClient)
 	{
@@ -27,7 +29,7 @@ public class ScheduledTask : BackgroundService
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		_logger.LogDebug("Timed Hosted Service running.");
+		_logger.LogInformation("Timed Hosted Service starting with {Seconds}s interval.", _jobSettings.TimerScheduleSeconds);
 
 		await CheckAndUpdatePublicIp();
 
@@ -37,10 +39,19 @@ public class ScheduledTask : BackgroundService
 		{
 			while (await timer.WaitForNextTickAsync(stoppingToken))
 			{
-				_logger.LogInformation("Starting timer. Next job execution will be in {Seconds} seconds at {NextSceheduledTime}.", _jobSettings.TimerScheduleSeconds, DateTime.UtcNow.AddSeconds(_jobSettings.TimerScheduleSeconds));
+				_logger.LogInformation("Starting scheduled check. Next execution at {NextScheduledTime} UTC.", DateTime.UtcNow.AddSeconds(_jobSettings.TimerScheduleSeconds));
 
 				await CheckAndUpdatePublicIp();
+
+				if (_consecutiveFailures > 0)
+				{
+					_logger.LogWarning("Health: {ConsecutiveFailures} consecutive failures. Last success: {LastSuccess}.", _consecutiveFailures, _lastSuccessfulCheck?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never");
+				}
 			}
+		}
+		catch (OperationCanceledException e)
+		{
+			_logger.LogInformation(e, "Timed Hosted Service is shutting down gracefully.");
 		}
 		catch (Exception e)
 		{
@@ -54,7 +65,7 @@ public class ScheduledTask : BackgroundService
 	{
 		int count = Interlocked.Increment(ref _executionCount);
 
-		_logger.LogDebug("Scheduled job has run {JobCount} times.", count);
+		_logger.LogDebug("Scheduled job execution #{JobCount}.", count);
 
 		try
 		{
@@ -64,11 +75,13 @@ public class ScheduledTask : BackgroundService
 
 			var ipRegex = new Regex(@"^(\d{1,3}\.){3}\d{1,3}$");
 
+			bool recordsUpdated = false;
+
 			foreach (var record in response.Result)
 			{
 				if (ipRegex.IsMatch(record.Content!) && record.Content != publicIpResponse.YourFuckingIPAddress)
 				{
-					_logger.LogInformation("Found an A DNS record with an IP address value that doesn't match the current public IP address.");
+					_logger.LogInformation("DNS record {RecordId} needs update: {OldIp} -> {NewIp}.", record.Id, record.Content, publicIpResponse.YourFuckingIPAddress);
 
 					var patchRequest = new UpdateDnsRecordRequest
 					{
@@ -76,14 +89,31 @@ public class ScheduledTask : BackgroundService
 					};
 
 					await _cloudflareClient.UpdateADnsRecordsAsync("68b52b0bd16901afb03de0fda9634419", record.Id!, patchRequest);
+
+					_logger.LogInformation("Successfully updated DNS record {RecordId}.", record.Id);
+
+					recordsUpdated = true;
 				}
 			}
-		}
-		catch (Exception ex)
-		{
-			_logger.LogError(ex, "An error occurred while updating DNS records.");
 
-			throw;
+			if (!recordsUpdated)
+			{
+				_logger.LogDebug("All DNS records are current. Public IP: {PublicIp}.", publicIpResponse.YourFuckingIPAddress);
+			}
+
+			_consecutiveFailures = 0;
+			_lastSuccessfulCheck = DateTime.UtcNow;
+		}
+		catch (Exception e)
+		{
+			_consecutiveFailures++;
+
+			_logger.LogError(e, "Error during IP check/update (failure #{FailureCount}). Will retry on next scheduled run.", _consecutiveFailures);
+
+			if (_consecutiveFailures >= 10)
+			{
+				_logger.LogWarning("High consecutive failure count ({FailureCount}). Check network connectivity and API credentials.", _consecutiveFailures);
+			}
 		}
 	}
 }
